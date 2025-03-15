@@ -1,4 +1,4 @@
-#!/bin/env lua
+#!/usr/bin/env lua
 
 local path_sep = package.config:sub(1, 1)
 local source_patt = ("@?(.*%s)"):format(path_sep)
