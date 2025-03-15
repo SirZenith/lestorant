@@ -201,6 +201,9 @@ add_rss_cmd(
             if not task then
                 log:warnln(err)
                 return
+            elseif err then
+                log:infoln("torrent ", task.output_name, " download failed: ", err)
+                return
             end
 
             local rpc = require "lestorant.aria2rpc.rpc"
