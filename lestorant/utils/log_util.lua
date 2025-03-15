@@ -13,11 +13,11 @@ M.LogLevel = LogLevel
 
 ---@type table<log.LogLevel, string>
 local LEVEL_TEXT = {
-    [LogLevel.trace] = "[TRACE] ",
-    [LogLevel.debug] = "[DEBUG] ",
-    [LogLevel.info]  = "[ INFO] ",
-    [LogLevel.warn]  = "[ WARN] ",
-    [LogLevel.error] = "[ERROR] ",
+    [LogLevel.trace] = "[TRACE]",
+    [LogLevel.debug] = "[DEBUG]",
+    [LogLevel.info]  = "[ INFO]",
+    [LogLevel.warn]  = "[ WARN]",
+    [LogLevel.error] = "[ERROR]",
 }
 
 ---@class log.Logger
@@ -66,7 +66,9 @@ function Logger:log(level, ...)
 
     local file = self.file
     file:write(LEVEL_TEXT[level] or "")
-    file:write("[", self.name, "] ")
+    file:write(os.date("[%y-%m-%d %X]") --[[@as string]])
+    file:write("[", self.name, "]")
+    file:write(" ")
 
     for _, value in ipairs { ... } do
         file:write(tostring(value))
