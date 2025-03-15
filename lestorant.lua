@@ -13,7 +13,12 @@ end
 
 local argparse = require "argparse"
 
+local log_util = require "lestorant.utils.log_util"
+
 local Application = argparse.Application
+local LogLevel = log_util.LogLevel
+
+log_util.set_global_log_level(LogLevel.info)
 
 local app = Application:new {
     name = "lestorant",
