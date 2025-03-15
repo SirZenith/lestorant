@@ -295,7 +295,8 @@ function M.add_task(context, target, options)
         if not file then
             resp_err = io_err or "I/O error"
         else
-            local data = file:read("a")
+            local read_flag = (_VERSION == "Lua 5.1" or _VERSION == "Lua 5.2") and "*a" or "a"
+            local data = file:read(read_flag)
             file:close()
 
             local encoded = base64.encode(data)
