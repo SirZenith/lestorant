@@ -124,11 +124,12 @@ add_rss_cmd(
             io.write(indent, "Pattern:", "\n")
             io.write(big_indent, sub.pattern, "\n")
 
+            local torrent_dl_dir = sub.torrent_dl_dir or torrent_dl.DEFAULT_OUTPUT_DIR
             io.write(indent, "Torrent directory:", "\n")
-            io.write(big_indent, sub.torrent_dl_dir or torrent_dl.DEFAULT_OUTPUT_DIR, "\n")
+            io.write(big_indent, torrent_dl_dir, "\n")
 
             io.write(indent, "Content directory:", "\n")
-            io.write(big_indent, sub.content_dl_dir or torrent_dl.DEFAULT_OUTPUT_DIR, "\n")
+            io.write(big_indent, sub.content_dl_dir or torrent_dl, "\n")
         end
     end
 )
