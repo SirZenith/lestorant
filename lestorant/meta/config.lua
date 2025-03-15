@@ -1,0 +1,13 @@
+---@class lestorant.Config
+---@field http_proxy? string # Proxy URL used for http request.
+---@field https_proxy? string # Proxy URL used for https request.
+---@field retry_cnt? integer # Times of retry for each URL request.
+---@field output_dir? string # Default output directory for all subscription to put their torrent.
+---@field sources? rss.RssSource[] # RSS source list.
+---@field subscriptions? rss.RssSubscription[] # Subscription list.
+---@field aria2 lestorant.Aria2Config
+
+---@class lestorant.Aria2Config
+---@field rpc_url? string
+---@field rpc_method? string # http method used by RPC request. Default value is `POST`
+---@field secret? string # Secret token for RPC request.
