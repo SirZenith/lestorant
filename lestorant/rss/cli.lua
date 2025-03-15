@@ -50,7 +50,7 @@ local function add_rss_cmd(name, help, parameters, operation)
 
         local ok, result = pcall(json.decode, data)
         if not ok then
-            log:warnln("failed to parse config file:", result)
+            log:warnln("failed to parse config file: ", result)
             return
         end
 
@@ -170,9 +170,9 @@ add_rss_cmd(
             if not task then
                 log:warnln(err)
             elseif err then
-                log:infoln("torrent ", task.output_name, " download failed: ", err)
+                log:infoln("torrent download failed: ", task.output_name, " - ", err)
             else
-                log:infoln("torrent ", task.output_name, " downloaded")
+                log:infoln("torrent downloaded: ", task.output_name)
             end
         end)
     end
@@ -208,7 +208,7 @@ add_rss_cmd(
                 log:warnln(err)
                 return
             elseif err then
-                log:infoln("torrent ", task.output_name, " download failed: ", err)
+                log:infoln("torrent download failed: ", task.output_name, " - ", err)
                 return
             end
 
@@ -234,7 +234,7 @@ add_rss_cmd(
             )
 
             if resp then
-                log:infoln("add ", task.title, " as Aria2 trask: ", resp.result or "Result Unknown")
+                log:infoln("new Aria2 task added: ", task.title)
             else
                 log:warnln("failed to add Aria2 task ", task.title, ": ", resp_err or "Unknown Error")
             end

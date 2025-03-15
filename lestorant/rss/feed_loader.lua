@@ -128,10 +128,10 @@ local loader_tbl = {
                 if article then
                     table.insert(articles, article)
                 else
-                    log:warnln("failed parsing", i, "with error:", item_err or "unknown")
+                    log:warnln("failed parsing #", i, " with error: ", item_err or "unknown")
                 end
             else
-                log:warnln("invalid item at index", i, "is skipped")
+                log:warnln("invalid item at index #", i, " is skipped")
             end
         end
 
