@@ -15,8 +15,8 @@ M.LogLevel = LogLevel
 local LEVEL_TEXT = {
     [LogLevel.trace] = "[TRACE] ",
     [LogLevel.debug] = "[DEBUG] ",
-    [LogLevel.info] = "[INFO] ",
-    [LogLevel.warn] = "[WARN] ",
+    [LogLevel.info]  = "[ INFO] ",
+    [LogLevel.warn]  = "[ WARN] ",
     [LogLevel.error] = "[ERROR] ",
 }
 
@@ -65,8 +65,8 @@ function Logger:log(level, ...)
     end
 
     local file = self.file
-    file:write(self.name, " - ")
     file:write(LEVEL_TEXT[level] or "")
+    file:write("[", self.name, "] ")
 
     for _, value in ipairs { ... } do
         file:write(tostring(value))
