@@ -77,6 +77,9 @@ end
 ---@param level log.LogLevel
 ---@param ... any
 function Logger:logln(level, ...)
+    if self.level > level or Logger.level > level then
+        return
+    end
     self:log(level, ...)
     self.file:write("\n")
 end
