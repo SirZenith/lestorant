@@ -165,10 +165,12 @@ add_rss_cmd(
     },
     function(config, args)
         update_rss(config, args, function(task, err)
-            if task then
-                log:infoln("torrent ", task.output_name, " downloaded")
+            if not task then
+                log:warnln(err)
+            elseif err then
+                log:infoln("torrent ", task.output_name, " download failed: ", err)
             else
-                log:warnln("torrent ", task.output_name, " download failed: ", err or "unknown error")
+                log:infoln("torrent ", task.output_name, " downloaded")
             end
         end)
     end

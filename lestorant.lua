@@ -1,3 +1,5 @@
+#!/bin/env lua
+
 local path_sep = package.config:sub(1, 1)
 local source_patt = ("@?(.*%s)"):format(path_sep)
 local source_path = debug.getinfo(1).source:match(source_patt)

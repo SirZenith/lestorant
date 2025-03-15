@@ -168,9 +168,9 @@ M.ErrorCodeTbl = {
 -- get_rpc_context_from_env reads RPC context table from environment variable.
 ---@return aria2rpc.RpcContext
 function M.get_rpc_context_from_env()
-    local rpc_url = os.getenv("ARIA2_RPC_URL") or ""
-    local secret = os.getenv("ARIA2_RPC_SECRET")
-    local method = os.getenv("ARIA2_RPC_METHOD") or M.DEFAULT_HTTP_METHOD
+    local rpc_url = os.getenv("LESTORANT_RPC_URL") or ""
+    local secret = os.getenv("LESTORANT_RPC_SECRET")
+    local method = os.getenv("LESTORANT_RPC_METHOD") or M.DEFAULT_HTTP_METHOD
 
     local proxy = nil
     local parsed = url.parse(rpc_url)
