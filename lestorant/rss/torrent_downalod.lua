@@ -137,14 +137,15 @@ end
 ---@param config? network_util.FetchArgs
 ---@return string? err
 function M.fetch_torrent(task, config)
-    if task.is_uri then
-        -- raw URI task needs no download
-        return
-    end
-
     local file, open_err = io.open(task.output_name, "wb")
     if not file then
         return ("failed to open torrent file %s: %s"):format(task.output_name, open_err)
+    end
+
+    if task.is_uri then
+        -- raw URI task needs no download
+        file:close();
+        return
     end
 
     local resp, resp_err = network_util.fetch_url(task.url, config)
