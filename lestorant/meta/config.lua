@@ -11,3 +11,5 @@
 ---@field rpc_url? string
 ---@field rpc_method? string # http method used by RPC request. Default value is `POST`
 ---@field secret? string # Secret token for RPC request.
+---@field http_proxy? string # Proxy URL used for RPC request. When not provided global http proxy will be used. Set this value to empty string to opt-out global value.
+---@field https_proxy? string # Proxy URL used for RPC request. When not provided global http proxy will be used. Set this value to empty string to opt-out global value.

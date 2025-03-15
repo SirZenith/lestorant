@@ -3,9 +3,12 @@ local ltn12 = require "ltn12"
 local url = require "socket.url"
 
 local json = require "lestorant.utils.json"
+local log_util = require "lestorant.utils.log_util"
 local network_util = require "lestorant.utils.network_util"
 
 local M = {}
+
+local log = log_util.Logger:new("rpc")
 
 local TOKEN_PREFIX = "token:"
 
@@ -213,6 +216,8 @@ local function call_method_inner(context, method, params)
         method = 'aria2.' .. method,
         params = copy_param,
     }
+
+    log:traceln("send RPC to ", context.rpc_url, context.proxy and (" with proxy " .. context.proxy) or "")
 
     local resp_tbl = {} ---@type string[]
 

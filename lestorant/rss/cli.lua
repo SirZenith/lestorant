@@ -195,7 +195,11 @@ add_rss_cmd(
             return
         end
 
-        local proxy = network_util.pick_proxy(rpc_url, config.http_proxy, config.https_proxy)
+        local proxy = network_util.pick_proxy(
+            rpc_url,
+            aria2cfg.http_proxy or config.http_proxy,
+            aria2cfg.https_proxy or config.https_proxy
+        )
 
         update_rss(config, args, function(task, err)
             if not task then
@@ -228,7 +232,7 @@ add_rss_cmd(
             )
 
             if resp then
-                log:infoln("add", task.title, "as Aria2: ", resp.result or "Result Unknown")
+                log:infoln("add ", task.title, " as Aria2 trask: ", resp.result or "Result Unknown")
             else
                 log:warnln("failed to add Aria2 task ", task.title, ": ", resp_err or "Unknown Error")
             end

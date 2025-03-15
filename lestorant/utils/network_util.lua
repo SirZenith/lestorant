@@ -138,6 +138,10 @@ function M.pick_proxy(target, http_proxy, https_proxy)
         proxy = https_proxy
     end
 
+    if proxy == "" then
+        proxy = nil
+    end
+
     return proxy
 end
 
