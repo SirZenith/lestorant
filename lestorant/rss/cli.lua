@@ -44,7 +44,8 @@ local function add_rss_cmd(name, help, parameters, operation)
             return
         end
 
-        local data = file:read("a")
+        local read_flag = (_VERSION == "Lua 5.1" or _VERSION == "Lua 5.2") and "*a" or "a"
+        local data = file:read(read_flag)
         file:close()
 
         local ok, result = pcall(json.decode, data)
