@@ -248,10 +248,9 @@ local function call_method_inner(context, method, params)
     end
 
     local resp_data = table.concat(resp_tbl)
-    local parse_err = nil
-    local parse_ok, data = xpcall(json.decode, function(err) parse_err = err end, resp_data)
+    local parse_ok, data = pcall(json.decode, resp_data)
     if not parse_ok then
-        return nil, "invalid JSON response: " .. (parse_err or "unknown error")
+        return nil, "invalid JSON response: " .. (data or "unknown error")
     end
 
     return data, nil
