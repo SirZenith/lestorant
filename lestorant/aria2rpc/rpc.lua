@@ -283,7 +283,7 @@ end
 function M.add_task(context, target, options)
     local resp, resp_err
 
-    if target:match("^%S-://") then
+    if target:match("^%S-://") or target:sub(1, 7) == "magnet:" then
         resp, resp_err = M.call_method(context, "addUri", { { target }, options })
     else
         local file, io_err = io.open(target, "rb")
