@@ -65,6 +65,7 @@ function Logger:log(level, ...)
     end
 
     local file = self.file
+    file:write(self.name, " - ")
     file:write(LEVEL_TEXT[level] or "")
 
     for _, value in ipairs { ... } do
