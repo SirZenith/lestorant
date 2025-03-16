@@ -221,7 +221,7 @@ function M.update_source(src, config, sub_list, on_result)
     local tasks = M.get_updated_torrent_list(articles, sub_list, default_torrent_dl_dir)
     local task_cnt = #tasks
     if task_cnt > 0 then
-        log:infoln(src.name, "provided ", task_cnt, " new ", task_cnt > 1 and "torrents" or "torrent")
+        log:infoln(src.name, " provided ", task_cnt, " new ", task_cnt > 1 and "torrents" or "torrent")
         M.fetch_torrent_list(tasks, fetch_args, on_result)
     end
 end
