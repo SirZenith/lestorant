@@ -139,7 +139,7 @@ end
 function M.fetch_torrent(task, config)
     local file, open_err = io.open(task.output_name, "wb")
     if not file then
-        return ("failed to open torrent file %s: %s"):format(task.output_name, open_err)
+        return "failed to open torrent file: " .. open_err
     end
 
     if task.is_uri then
@@ -195,7 +195,10 @@ function M.update_source(src, config, sub_list, on_result)
 
     local xml, feed_err = M.fetch_feed(src.url, fetch_args)
     if not xml then
-        try_call(on_result, nil, feed_err or "unknown feed request error")
+        try_call(on_result, nil, ("failed to fetch source %s: %s"):format(
+            src.name,
+            feed_err or "unknown feed request error"
+        ))
         return
     end
 
@@ -204,18 +207,21 @@ function M.update_source(src, config, sub_list, on_result)
     local loader_type = src.loader_type or feed_loader.DEFAULT_LOADER_TYPE
     local articles, load_err = M.load_rss_articles(xml, loader_type)
     if not articles then
-        try_call(on_result, nil, load_err or "unknown RSS load error")
+        try_call(on_result, nil, ("failed to load RSS content for %s: %s"):format(
+            src.name,
+            load_err or "unknown RSS load error"
+        ))
         return
     end
 
     local article_cnt = #articles
-    log:infoln("source ", src.name, " responded with ", article_cnt, " ", article_cnt > 1 and "articles" or "article")
+    log:infoln(src.name, " responded with ", article_cnt, " ", article_cnt > 1 and "articles" or "article")
 
     local default_torrent_dl_dir = config.output_dir or M.DEFAULT_OUTPUT_DIR
     local tasks = M.get_updated_torrent_list(articles, sub_list, default_torrent_dl_dir)
     local task_cnt = #tasks
     if task_cnt > 0 then
-        log:infoln("found ", task_cnt, " new ", task_cnt > 1 and "torrents" or "torrent")
+        log:infoln(src.name, "provided ", task_cnt, " new ", task_cnt > 1 and "torrents" or "torrent")
         M.fetch_torrent_list(tasks, fetch_args, on_result)
     end
 end
