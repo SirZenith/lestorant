@@ -71,7 +71,7 @@ local function create_https_behind_proxy(target)
                 return nil, "failed to create SSL wrapping"
             end
 
-            ssl_sock:sni(host)
+            ssl_sock:sni(target.host)
             ssl_sock:settimeout(https.TIMEOUT)
             try(ssl_sock:dohandshake())
 
