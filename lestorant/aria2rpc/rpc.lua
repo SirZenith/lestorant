@@ -15,12 +15,6 @@ local TOKEN_PREFIX = "token:"
 -- Default http method used for RPC request.
 M.DEFAULT_HTTP_METHOD = "POST"
 
----@class aria2rpc.RpcContext
----@field rpc_url string # RPC server URL
----@field secret? string # RPC secret
----@field proxy? string # proxy used in RPC request
----@field method? string # HTTP method used by RPC call
-
 ---@enum aria2rpc.UriOptions
 M.UriOptions = {
     all_proxy = "all-proxy",
@@ -168,28 +162,45 @@ M.ErrorCodeTbl = {
     [30] = 'could not parse JSON-RPC request'
 }
 
--- get_rpc_context_from_env reads RPC context table from environment variable.
----@return aria2rpc.RpcContext
-function M.get_rpc_context_from_env()
-    local rpc_url = os.getenv("LESTORANT_RPC_URL") or ""
-    local secret = os.getenv("LESTORANT_RPC_SECRET")
-    local method = os.getenv("LESTORANT_RPC_METHOD") or M.DEFAULT_HTTP_METHOD
+---@class aria2rpc.RpcContext
+---@field rpc_url string # RPC server URL
+---@field secret? string # RPC secret
+---@field proxy? string # proxy used in RPC request
+---@field method? string # HTTP method used by RPC call
+local RpcContext = {}
+M.RpcContext = RpcContext
 
-    local proxy = nil
-    local parsed = url.parse(rpc_url)
+RpcContext.__index = RpcContext
+
+---@param rpc_url string
+---@return aria2rpc.RpcContext
+function RpcContext:new(rpc_url)
+    local this = setmetatable({}, self)
+
+    this.rpc_url = rpc_url
+
+    return this
+end
+
+-- new_from_env makes a new RPC context object, and populate its field with environment
+-- variable.
+---@return aria2rpc.RpcContext
+function RpcContext:new_from_env()
+    local this = setmetatable({}, self)
+
+    this.rpc_url = os.getenv("LESTORANT_RPC_URL") or ""
+    this.secret = os.getenv("LESTORANT_RPC_SECRET")
+    this.method = os.getenv("LESTORANT_RPC_METHOD") or M.DEFAULT_HTTP_METHOD
+
+    local parsed = url.parse(this.rpc_url)
     local scheme = parsed and parsed.scheme
     if scheme == "http" then
-        proxy = os.getenv("http_proxy")
+        this.proxy = os.getenv("http_proxy")
     elseif scheme == "https" then
-        proxy = os.getenv("https_proxy")
+        this.proxy = os.getenv("https_proxy")
     end
 
-    return {
-        rpc_url = rpc_url,
-        secret = secret,
-        proxy = proxy,
-        method = method,
-    } --[[@as aria2rpc.RpcContext]]
+    return this
 end
 
 ---@param context aria2rpc.RpcContext
@@ -258,15 +269,14 @@ end
 
 -- call_method sends a RPC request then returns parsed response body and a possible
 -- error message.
----@param context aria2rpc.RpcContext # Meta data for RPC request
 ---@param method string # RPC method name
 ---@param params? any[] # RPC parameter list
 ---@param on_result? fun(result: any) # Optional callback that gets called with `result` field in response JSON when request successed.
 ---@param on_error? fun(err: string) # Optional callback that gets called with error message when request failed.
 ---@return table? resp
 ---@return string? err
-function M.call_method(context, method, params, on_result, on_error)
-    local resp, err = call_method_inner(context, method, params)
+function RpcContext:call_method(method, params, on_result, on_error)
+    local resp, err = call_method_inner(self, method, params)
 
     if on_result and resp then
         on_result(resp and resp.result)
@@ -279,6 +289,8 @@ function M.call_method(context, method, params, on_result, on_error)
     return resp, err
 end
 
+-- ----------------------------------------------------------------------------
+
 ---@param context aria2rpc.RpcContext
 ---@param target string # URI or path to local file
 ---@param options table<aria2rpc.UriOptions, string> # Download option for this task
@@ -288,7 +300,7 @@ function M.add_task(context, target, options)
     local resp, resp_err
 
     if target:match("^%S-://") or target:sub(1, 7) == "magnet:" then
-        resp, resp_err = M.call_method(context, "addUri", { { target }, options })
+        resp, resp_err = context:call_method("addUri", { { target }, options })
     else
         local file, io_err = io.open(target, "rb")
         if not file then
@@ -301,9 +313,9 @@ function M.add_task(context, target, options)
             local encoded = base64.encode(data)
 
             if target:sub(-8) == ".torrent" then
-                resp, resp_err = M.call_method(context, "addTorrent", { encoded, {}, options })
+                resp, resp_err = context:call_method("addTorrent", { encoded, {}, options })
             elseif target:sub(-6) == ".meta4" or target:sub(-9) == ".metalink" then
-                resp, resp_err = M.call_method(context, "addMetalink", { encoded, options })
+                resp, resp_err = context:call_method("addMetalink", { encoded, options })
             end
         end
     end

@@ -147,8 +147,7 @@ new_rpc_cmd(
     "Queries version infomation of running aria2 instance",
     nil,
     function(context)
-        rpc.call_method(
-            context,
+        context:call_method(
             "getVersion",
             nil,
             function(result)
@@ -199,11 +198,11 @@ new_rpc_cmd(
 
         local resp, method_err
         if task_type == TaskStateType.Active then
-            resp, method_err = rpc.call_method(context, "tellActive")
+            resp, method_err = context:call_method("tellActive")
         elseif task_type == TaskStateType.Waiting then
-            resp, method_err = rpc.call_method(context, 'tellWaiting', { 0, 666 })
+            resp, method_err = context:call_method('tellWaiting', { 0, 666 })
         elseif task_type == TaskStateType.Stopped then
-            resp, method_err = rpc.call_method(context, 'tellStopped', { 0, 666 })
+            resp, method_err = context:call_method('tellStopped', { 0, 666 })
         else
             method_err = "unknown task state type: " .. task_type
         end
