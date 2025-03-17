@@ -3,12 +3,14 @@ local M = {}
 local DATA_SIZE_UNIT = { "B", "KiB", "MiB", "GiB", "TiB" }
 local DATA_SIZE_SHIFT = 1024 -- conversion factor between successive 2 size units
 
+local ELLIPSIS = '...'
+
 -- abbrev formats given data size into string using units like B, KiB, etc.
 -- A carry threshold can be specified to control when a larger unit should be used.
 -- If after conversion, result size is no smaller then threshold value, then larger
 -- unit will be taken.
 ---@param value number # data size in bytes
----@param threshold number # a carry threshold, normally greater then 0 and less than or equal to 1.
+---@param threshold? number # a carry threshold, normally greater then 0 and less than or equal to 1.
 ---@return string # human readable format of data size
 function M.file_size_abbr(value, threshold)
     threshold = threshold or 1
@@ -110,6 +112,20 @@ function M.compute_eta(download_speed, remaining_length)
     end
 
     return M.to_hhmmss(remaining_length / download_speed)
+end
+
+-- truncate_string truncates a string if its length is over given value. And add
+-- ellipsis at its end.
+---@param str string
+---@param length integer
+---@return string
+function M.truncate_string(str, length)
+    -- TODO: add non-ASCII character support
+    if #str <= length then
+        return str
+    end
+
+    return str:sub(1, length - #ELLIPSIS) .. ELLIPSIS
 end
 
 return M

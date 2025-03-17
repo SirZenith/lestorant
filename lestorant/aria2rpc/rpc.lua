@@ -130,7 +130,7 @@ M.UriOptions = {
     user_agent = "user-agent"
 }
 
----@enum aria2rpc.StatusKey
+---@enum aria2rpc.TaskInfoKey
 M.StatusKey = {
     gid = "gid",
     status = "status",
@@ -157,6 +157,71 @@ M.StatusKey = {
     verified_length = "verifiedLength",
     verify_integrity_pending = "verifyIntegrityPending",
 }
+
+---@enum aria2rpc.TaskStatus
+M.TaskStatus = {
+    active = "active",
+    waiting = "waiting",
+    paused = "paused",
+    error = "error",
+    complete = "complete",
+    removed = "removed",
+}
+
+---@enum aria2rpc.TorrentFileMode
+M.TorrentFileMode = {
+    single = "single",
+    multi = "multi",
+}
+
+---@class aria2rpc.TorrentInfoDict
+---@field name? string
+
+
+---@class aria2rpc.TaskTorrentInfo
+---@field announceList string[][] # List of lists of announce URIs. If the torrent contains announce and no announce-list, announce is converted to the announce-list format.
+---@field comment string # The comment of the torrent. comment.utf-8 is used if available.
+---@field creationDate integer # The creation time of the torrent. The value is an integer since the epoch, measured in seconds.
+---@field mode aria2rpc.TorrentFileMode # File mode of the torrent. The value is either single or multi.
+---@field info aria2rpc.TorrentInfoDict
+
+---@class aria2rpc.TaskUriInfo
+---@field uri string
+---@field status string
+
+---@class aria2rpc.TaskFileInfo
+---@field index string # Index of the file, starting at 1, in the same order as files appear in the multi-file torrent.
+---@field path string # File path.
+---@field length string # File size in bytes.
+---@field completedLength string # Completed length of this file in bytes. Please note that it is possible that sum of completedLength is less than the completedLength returned by the aria2.tellStatus() method. This is because completedLength in aria2.getFiles() only includes completed pieces. On the other hand, completedLength in aria2.tellStatus() also includes partially completed pieces.
+---@field selected string # true if this file is selected by --select-file option. If --select-file is not specified or this is single-file torrent or not a torrent download at all, this value is always true. Otherwise false.
+---@field uris aria2rpc.TaskUriInfo[] # Returns a list of URIs for this file. The element type is the same struct used in the aria2.getUris() method.
+
+---@class aria2rpc.TaskInfo
+---@field gid string # GID of the download.
+---@field status aria2rpc.TaskStatus # task status
+---@field totalLength string # Total length of the download in bytes.
+---@field completedLength string # Completed length of the download in bytes.
+---@field uploadLength string # Uploaded length of the download in bytes.
+---@field bitfield string # Hexadecimal representation of the download progress. The highest bit corresponds to the piece at index 0. Any set bits indicate loaded pieces, while unset bits indicate not yet loaded and/or missing pieces. Any overflow bits at the end are set to zero. When the download was not started yet, this key will not be included in the response.
+---@field downloadSpeed string # Download speed of this download measured in bytes/sec.
+---@field uploadSpeed string # Upload speed of this download measured in bytes/sec.
+---@field infoHash? string # InfoHash. BitTorrent only.
+---@field numSeeders? string # The number of seeders aria2 has connected to. BitTorrent only.
+---@field seeder? string # true if the local endpoint is a seeder. Otherwise false. BitTorrent only.
+---@field pieceLength string # Piece length in bytes.
+---@field numPieces string # The number of pieces.
+---@field connections string # The number of peers/servers aria2 has connected to.
+---@field errorCode string # The code of the last error for this item, if any. The value is a string. The error codes are defined in the EXIT STATUS section. This value is only available for stopped/completed downloads.
+---@field errorMessage string # The (hopefully) human readable error message associated to errorCode.
+---@field followedBy string[] # List of GIDs which are generated as the result of this download. For example, when aria2 downloads a Metalink file, it generates downloads described in the Metalink (see the --follow-metalink option). This value is useful to track auto-generated downloads. If there are no such downloads, this key will not be included in the response.
+---@field following string # The reverse link for followedBy. A download included in followedBy has this object's GID in its following value.
+---@field belongsTo string # GID of a parent download. Some downloads are a part of another download. For example, if a file in a Metalink has BitTorrent resources, the downloads of ".torrent" files are parts of that parent. If this download has no parent, this key will not be included in the response.
+---@field dir string # Directory to save files.
+---@field files aria2rpc.TaskFileInfo[] # Returns the list of files. The elements of this list are the same structs used in aria2.getFiles() method.
+---@field bittorrent? aria2rpc.TaskTorrentInfo
+---@field verifiedLength integer # The number of verified number of bytes while the files are being hash checked. This key exists only when this download is being hash checked.
+---@field verifyIntegrityPending boolean # true if this download is waiting for the hash check in a queue. This key exists only when this download is in the queue.
 
 M.ErrorCodeTbl = {
     [1] = "unknown",
@@ -405,7 +470,7 @@ function RpcContext:unpause_all(on_result)
 end
 
 ---@param gid string
----@param keys? aria2rpc.StatusKey[]
+---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_status(gid, keys, on_result)
     self:call_method("aria2.tellStatus", { gid, keys }, on_result)
@@ -435,7 +500,7 @@ function RpcContext:get_servers(gid, on_result)
     self:call_method("aria2.getServers", { gid }, on_result)
 end
 
----@param keys? aria2rpc.StatusKey[]
+---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_active(keys, on_result)
     self:call_method("aria2.tellActive", { keys }, on_result)
@@ -443,7 +508,7 @@ end
 
 ---@param offset integer # Offset to the start of waiting queue. Negative values are allowed.
 ---@param num integer # Maxium entry to return.
----@param keys? aria2rpc.StatusKey[]
+---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_waiting(offset, num, keys, on_result)
     self:call_method("aria2.tellWaiting", { offset, num, keys }, on_result)
@@ -451,7 +516,7 @@ end
 
 ---@param offset integer # Offset to the start of waiting queue. Negative values are allowed.
 ---@param num integer # Maxium entry to return.
----@param keys? aria2rpc.StatusKey[]
+---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_stopped(offset, num, keys, on_result)
     self:call_method("aria2.tellStopped", { offset, num, keys }, on_result)
