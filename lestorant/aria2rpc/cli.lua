@@ -87,7 +87,7 @@ local root_cmd = Command:new { name = "aria2rpc", help = "Aria2 RPC client" }
 ---@param params? argparse.ParameterCfg[] # command's parameter list
 ---@param operation fun(context: aria2rpc.RpcContext, args: table<string, any>)
 local function new_rpc_cmd(name, help, params, operation)
-    local cmd = Command:new { name = name }
+    local cmd = Command:new { name = name, help = help }
     cmd:parameter(common_params)
 
     if params then
