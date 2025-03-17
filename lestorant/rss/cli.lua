@@ -188,23 +188,32 @@ add_rss_cmd(
         { name = "name", type = "string", max_cnt = 0 },
     },
     function(config, args)
+        local rpc = require "lestorant.aria2rpc.rpc"
+
+        local RpcContext = rpc.RpcContext
+        local UriOptions = rpc.UriOptions
+
         local aria2cfg = config.aria2
         if not aria2cfg then
             log:errorln("no aria2 section found in config")
             return
         end
 
-        local rpc_url = aria2cfg.rpc_url
-        if not rpc_url then
+        local context = RpcContext:new_from_env()
+
+        context.rpc_url = aria2cfg.rpc_url or context.rpc_url
+        if not context.rpc_url then
             log:errorln("no RPC URl found in Aria2 config")
             return
         end
 
-        local proxy = network_util.pick_proxy(
-            rpc_url,
+        context.proxy = network_util.pick_proxy(
+            context.rpc_url,
             aria2cfg.http_proxy or config.http_proxy,
             aria2cfg.https_proxy or config.https_proxy
         )
+        context.secret = aria2cfg.secret
+        context.method = aria2cfg.rpc_method or rpc.DEFAULT_HTTP_METHOD
 
         update_rss(config, args, function(task, err)
             if not task then
@@ -215,32 +224,25 @@ add_rss_cmd(
                 return
             end
 
-            local rpc = require "lestorant.aria2rpc.rpc"
-            local UriOptions = rpc.UriOptions
-
             local target = task.output_name
             if task.is_uri then
                 target = task.url
             end
 
-            local resp, resp_err = rpc.add_task(
-                {
-                    rpc_url = rpc_url,
-                    proxy = proxy,
-                    method = aria2cfg.rpc_method or rpc.DEFAULT_HTTP_METHOD,
-                    secret = aria2cfg.secret,
-                },
+            context:add_task(
                 target,
                 {
                     [UriOptions.dir] = task.content_dl_dir,
-                }
+                },
+                nil,
+                function(_, rpc_err)
+                    if err then
+                        log:warnln("failed to add Aria2 task ", task.title, ": ", rpc_err or "Unknown Error")
+                    else
+                        log:infoln("new Aria2 task added: ", task.title)
+                    end
+                end
             )
-
-            if resp then
-                log:infoln("new Aria2 task added: ", task.title)
-            else
-                log:warnln("failed to add Aria2 task ", task.title, ": ", resp_err or "Unknown Error")
-            end
         end)
 
         local line = ("-"):rep(20)

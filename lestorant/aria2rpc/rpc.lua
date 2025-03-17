@@ -1,6 +1,7 @@
 local base64 = require "base64"
 local ltn12 = require "ltn12"
 local url = require "socket.url"
+local fs_util = require "lestorant.utils.fs_util"
 
 local json = require "lestorant.utils.json"
 local log_util = require "lestorant.utils.log_util"
@@ -129,6 +130,34 @@ M.UriOptions = {
     user_agent = "user-agent"
 }
 
+---@enum aria2rpc.StatusKey
+M.StatusKey = {
+    gid = "gid",
+    status = "status",
+    total_length = "totalLength",
+    completed_length = "completedLength",
+    upload_length = "uploadLength",
+    bitfield = "bitfield",
+    download_speed = "downloadSpeed",
+    upload_speed = "uploadSpeed",
+    info_hash = "infoHash",
+    num_seeders = "numSeeders",
+    seeder = "seeder",
+    piece_length = "pieceLength",
+    num_pieces = "numPieces",
+    connections = "connections",
+    error_code = "errorCode",
+    error_message = "errorMessage",
+    followed_by = "followedBy",
+    following = "following",
+    belongs_to = "belongsTo",
+    dir = "dir",
+    files = "files",
+    bittorrent = "bittorrent",
+    verified_length = "verifiedLength",
+    verify_integrity_pending = "verifyIntegrityPending",
+}
+
 M.ErrorCodeTbl = {
     [1] = "unknown",
     [2] = "timeout",
@@ -162,11 +191,15 @@ M.ErrorCodeTbl = {
     [30] = 'could not parse JSON-RPC request'
 }
 
+---@alias aria2rpc.RpcCallback fun(result?: any, err?: string)
+
 ---@class aria2rpc.RpcContext
 ---@field rpc_url string # RPC server URL
 ---@field secret? string # RPC secret
 ---@field proxy? string # proxy used in RPC request
 ---@field method? string # HTTP method used by RPC call
+---@field _id_counter integer
+---@field _rpc_callback_map table<string, aria2rpc.RpcCallback>
 local RpcContext = {}
 M.RpcContext = RpcContext
 
@@ -178,6 +211,8 @@ function RpcContext:new(rpc_url)
     local this = setmetatable({}, self)
 
     this.rpc_url = rpc_url
+    this._id_counter = 0
+    this._rpc_callback_map = {}
 
     return this
 end
@@ -186,9 +221,9 @@ end
 -- variable.
 ---@return aria2rpc.RpcContext
 function RpcContext:new_from_env()
-    local this = setmetatable({}, self)
+    local rpc_url = os.getenv("LESTORANT_RPC_URL") or ""
+    local this = self:new(rpc_url)
 
-    this.rpc_url = os.getenv("LESTORANT_RPC_URL") or ""
     this.secret = os.getenv("LESTORANT_RPC_SECRET")
     this.method = os.getenv("LESTORANT_RPC_METHOD") or M.DEFAULT_HTTP_METHOD
 
@@ -204,11 +239,11 @@ function RpcContext:new_from_env()
 end
 
 ---@param context aria2rpc.RpcContext
+---@param id string # ID for this RPC call
 ---@param method string # RPC method name
 ---@param params? any[] # RPC parameter list
----@return table? resp
----@return string? err
-local function call_method_inner(context, method, params)
+---@param on_result fun(context: aria2rpc.RpcContext, id: string, result?: any, err?: string)
+local function call_method_inner(context, id, method, params, on_result)
     local copy_param = {}
 
     if context.secret then
@@ -223,8 +258,8 @@ local function call_method_inner(context, method, params)
 
     local json_body = json.encode {
         jsonrpc = "2.0",
-        id = "foo",
-        method = 'aria2.' .. method,
+        id = id,
+        method = method,
         params = copy_param,
     }
 
@@ -247,80 +282,344 @@ local function call_method_inner(context, method, params)
 
     local ok, req_ok, code, _, status = pcall(network_util.request, req)
     if not ok then
-        return nil, "failed to make request to url: " .. req.url
+        on_result(context, id, nil, "failed to make request to url: " .. req.url)
+        return
     end
 
     if not req_ok then
-        return nil, "request failed with: " .. tostring(code)
+        on_result(context, id, nil, "request failed with: " .. tostring(code))
+        return
     end
 
     if code ~= 200 then
-        return nil, ("request status: %s"):format(status)
+        on_result(context, id, nil, ("request status: %s"):format(status))
+        return
     end
 
     local resp_data = table.concat(resp_tbl)
     local parse_ok, data = pcall(json.decode, resp_data)
     if not parse_ok then
-        return nil, "invalid JSON response: " .. (data or "unknown error")
+        on_result(context, id, nil, "invalid JSON response: " .. (data or "unknown error"))
+        return
     end
 
-    return data, nil
+    on_result(context, id, data and data.result, nil)
 end
 
 -- call_method sends a RPC request then returns parsed response body and a possible
 -- error message.
 ---@param method string # RPC method name
 ---@param params? any[] # RPC parameter list
----@param on_result? fun(result: any) # Optional callback that gets called with `result` field in response JSON when request successed.
----@param on_error? fun(err: string) # Optional callback that gets called with error message when request failed.
----@return table? resp
----@return string? err
-function RpcContext:call_method(method, params, on_result, on_error)
-    local resp, err = call_method_inner(self, method, params)
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:call_method(method, params, on_result)
+    local new_count = self._id_counter + 1
+    self._id_counter = new_count
+    local id = tostring(new_count)
 
-    if on_result and resp then
-        on_result(resp and resp.result)
+    self._rpc_callback_map[id] = on_result
+
+    call_method_inner(self, id, method, params, self._on_rpc_result)
+end
+
+---@param id string
+---@param result? any
+---@param err? string
+function RpcContext:_on_rpc_result(id, result, err)
+    local on_result = self._rpc_callback_map[id]
+    if on_result then
+        on_result(result, err)
     end
-
-    if on_error and not resp then
-        on_error(err or "unknown")
-    end
-
-    return resp, err
 end
 
 -- ----------------------------------------------------------------------------
+-- Primitive Methods
 
----@param context aria2rpc.RpcContext
----@param target string # URI or path to local file
----@param options table<aria2rpc.UriOptions, string> # Download option for this task
----@return table? resp
----@return string? err
-function M.add_task(context, target, options)
-    local resp, resp_err
+---@param uris string[] # A list of URIs.
+---@param options? table<aria2rpc.UriOptions, any> # a table of download options.
+---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_uri(uris, options, position, on_result)
+    self:call_method("aria2.addUri", { uris, options, position }, on_result)
+end
 
-    if target:match("^%S-://") or target:sub(1, 7) == "magnet:" then
-        resp, resp_err = context:call_method("addUri", { { target }, options })
-    else
-        local file, io_err = io.open(target, "rb")
-        if not file then
-            resp_err = io_err or "I/O error"
-        else
-            local read_flag = (_VERSION == "Lua 5.1" or _VERSION == "Lua 5.2") and "*a" or "a"
-            local data = file:read(read_flag)
-            file:close()
+---@param torrent string # base64 encoded torrent file content.
+---@param uris? string[] # URIs for Web-seeding.
+---@param options? table<aria2rpc.UriOptions, any> # a table of download options.
+---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_torrent(torrent, uris, options, position, on_result)
+    self:call_method("aria2.addTorrent", { torrent, uris, options, position }, on_result)
+end
 
-            local encoded = base64.encode(data)
+---@param metalink string # base64 encoded metalink file content.
+---@param options? table<aria2rpc.UriOptions, any> # a table of download options.
+---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_metalink(metalink, options, position, on_result)
+    self:call_method("aria2.addMetalink", { metalink, options, position }, on_result)
+end
 
-            if target:sub(-8) == ".torrent" then
-                resp, resp_err = context:call_method("addTorrent", { encoded, {}, options })
-            elseif target:sub(-6) == ".meta4" or target:sub(-9) == ".metalink" then
-                resp, resp_err = context:call_method("addMetalink", { encoded, options })
-            end
-        end
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:remove(gid, on_result)
+    self:call_method("aria2.remove", { gid }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:force_remove(gid, on_result)
+    self:call_method("aria2.forceRemove", { gid }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:pause(gid, on_result)
+    self:call_method("aria2.pause", { gid }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:pause_all(on_result)
+    self:call_method("aria2.pauseAll", nil, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:force_pause(gid, on_result)
+    self:call_method("aria2.forcePause", { gid }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:force_pause_all(on_result)
+    self:call_method("aria2.forcePauseAll", nil, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:unpause(gid, on_result)
+    self:call_method("aria2.unpause", { gid }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:unpause_all(on_result)
+    self:call_method("aria2.unpauseAll", nil, on_result)
+end
+
+---@param gid string
+---@param keys? aria2rpc.StatusKey[]
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:tell_status(gid, keys, on_result)
+    self:call_method("aria2.tellStatus", { gid, keys }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_uris(gid, on_result)
+    self:call_method("aria2.getUris", { gid }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_files(gid, on_result)
+    self:call_method("aria2.getFiles", { gid }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_peers(gid, on_result)
+    self:call_method("aria2.getPeers", { gid }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_servers(gid, on_result)
+    self:call_method("aria2.getServers", { gid }, on_result)
+end
+
+---@param keys? aria2rpc.StatusKey[]
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:tell_active(keys, on_result)
+    self:call_method("aria2.tellActive", { keys }, on_result)
+end
+
+---@param offset integer # Offset to the start of waiting queue. Negative values are allowed.
+---@param num integer # Maxium entry to return.
+---@param keys? aria2rpc.StatusKey[]
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:tell_waiting(offset, num, keys, on_result)
+    self:call_method("aria2.tellWaiting", { offset, num, keys }, on_result)
+end
+
+---@param offset integer # Offset to the start of waiting queue. Negative values are allowed.
+---@param num integer # Maxium entry to return.
+---@param keys? aria2rpc.StatusKey[]
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:tell_stopped(offset, num, keys, on_result)
+    self:call_method("aria2.tellStopped", { offset, num, keys }, on_result)
+end
+
+---@enum aria2rpc.ChangePosHow
+M.ChangePosHow = {
+    pos_set = "POS_SET",
+    pos_cur = "POS_CUR",
+    pos_end = "POS_END",
+}
+
+---@param gid string
+---@param pos integer
+---@param how aria2rpc.ChangePosHow
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:change_position(gid, pos, how, on_result)
+    self:call_method("aria2.changePosition", { gid, pos, how }, on_result)
+end
+
+---@param gid any
+---@param fileIndex integer
+---@param del_uris string[]
+---@param addUris string[]
+---@param position? integer
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:change_uri(gid, fileIndex, del_uris, addUris, position, on_result)
+    self:call_method("aria2.changeUri", { gid, fileIndex, del_uris, addUris, position }, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_option(gid, on_result)
+    self:call_method("aria2.getOption", { gid }, on_result)
+end
+
+---@param gid any
+---@param options aria2rpc.UriOptions
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:change_option(gid, options, on_result)
+    self:call_method("aria2.changeOption", { gid, options }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_global_option(on_result)
+    self:call_method("aria2.getGlobalOption", nil, on_result)
+end
+
+---@enum aria2rpc.GlobalOptions
+M.GlobalOptions = {
+    bt_max_open_files               = "bt-max-open-files",
+    download_result                 = "download-result",
+    keep_unfinished_download_result = "keep-unfinished-download-result",
+    log                             = "log",
+    log_level                       = "log-level",
+    max_concurrent_downloads        = "max-concurrent-downloads",
+    max_download_result             = "max-download-result",
+    max_overall_download_linmit     = "max-overall-download-limit",
+    max_overall_upload_limit        = "max-overall-upload-limit",
+    optimize_concurrent_downloads   = "optimize-concurrent-downloads",
+    save_cookies                    = "save-cookies",
+    save_session                    = "save-session",
+    server_stat_of                  = "server-stat-of",
+}
+
+---@param options any
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:change_global_option(options, on_result)
+    self:call_method("aria2.changeGlobalOption", { options }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_global_stat(on_result)
+    self:call_method("aria2.getGlobalStat", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:purge_download_result(on_result)
+    self:call_method("aria2.purgeDownloadResult", nil, on_result)
+end
+
+---@param gid string
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:remove_download_result(gid, on_result)
+    self:call_method("aria2.removeDownloadResult", { gid }, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_version(on_result)
+    self:call_method("aria2.getVersion", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:get_session_info(on_result)
+    self:call_method("aria2.getSessionInfo", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:shutdown(on_result)
+    self:call_method("aria2.shutdown", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:force_shutdown(on_result)
+    self:call_method("aria2.forceShutdown", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:save_session(on_result)
+    self:call_method("aria2.saveSession", nil, on_result)
+end
+
+-- system.multicall(methods)
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:list_methods(on_result)
+    self:call_method("system.listMethods", nil, on_result)
+end
+
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:list_notification(on_result)
+    self:call_method("system.listNotifications", nil, on_result)
+end
+
+-- ----------------------------------------------------------------------------
+-- Secondary Methods
+
+---@param path string # path to torrent file
+---@param uris? any
+---@param options? any
+---@param position? any
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_torrent_file(path, uris, options, position, on_result)
+    local data, io_err = fs_util.read_all(path)
+    if not data then
+        if on_result then on_result(nil, io_err or "I/O error") end
+        return
     end
 
-    return resp, resp_err
+    self:add_torrent(base64.encode(data), uris, options, position, on_result)
+end
+
+---@param path string # path to torrent file
+---@param options? any
+---@param position? any
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_metalink_file(path, options, position, on_result)
+    local data, io_err = fs_util.read_all(path)
+    if not data then
+        if on_result then on_result(nil, io_err or "I/O error") end
+        return
+    end
+
+    self:add_metalink(base64.encode(data), options, position, on_result)
+end
+
+---@param target string # URI or path to local file
+---@param options table<aria2rpc.UriOptions, string> # Download option for this task
+---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:add_task(target, options, position, on_result)
+    if target:match("^%S-://") or target:sub(1, 7) == "magnet:" then
+        self:add_uri({ target }, options, position, on_result)
+    elseif target:sub(-8) == ".torrent" then
+        self:add_torrent_file(target, {}, options, position, on_result)
+    elseif target:sub(-6) == ".meta4" or target:sub(-9) == ".metalink" then
+        self:add_metalink_file(target, options, position, on_result)
+    end
 end
 
 return M

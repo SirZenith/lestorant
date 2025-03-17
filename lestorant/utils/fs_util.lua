@@ -40,4 +40,21 @@ function M.join(base, ...)
     return table.concat({ base, ... }, PATH_SEP)
 end
 
+-- read_all reads all content of given file.
+---@param path string
+---@return string? content
+---@return string? err
+function M.read_all(path)
+    local file, io_err = io.open(path, "rb")
+    if not file then
+        return nil, io_err or "I/O error"
+    end
+
+    local read_flag = (_VERSION == "Lua 5.1" or _VERSION == "Lua 5.2") and "*a" or "a"
+    local data = file:read(read_flag)
+    file:close()
+
+    return data, nil
+end
+
 return M

@@ -5,6 +5,7 @@ local format_util = require "lestorant.utils.format_util"
 local logger = require "lestorant.utils.log_util"
 
 local Command = argparse.Command
+local RpcContext = rpc.RpcContext
 
 local log = logger.Logger:new("aria2rpc")
 
@@ -95,7 +96,7 @@ local function new_rpc_cmd(name, help, params, operation)
     end
 
     cmd:operation(function(args)
-        local context = rpc.get_rpc_context_from_env()
+        local context = RpcContext:new_from_env()
 
         if args.rpc_url then
             context.rpc_url = args.rpc_url
@@ -131,13 +132,13 @@ new_rpc_cmd(
         local options = get_uri_options_from_args(args)
 
         for _, item in ipairs(items --[[@as string[] ]]) do
-            local resp, resp_err = rpc.add_task(context, item, options)
-
-            if resp then
-                log:infoln(resp.result or "")
-            else
-                log:warnln("failed to add item ", item, ": ", resp_err or "unknown error")
-            end
+            context:add_task(item, options, nil, function(result, err)
+                if err then
+                    log:warnln("failed to add item ", item, ": ", err or "unknown error")
+                else
+                    log:infoln(result)
+                end
+            end)
         end
     end
 )
@@ -147,36 +148,35 @@ new_rpc_cmd(
     "Queries version infomation of running aria2 instance",
     nil,
     function(context)
-        context:call_method(
-            "getVersion",
-            nil,
-            function(result)
-                local buffer = {}
+        context:get_version(function(result, err)
+            if err then
+                log:errorln("failed to get version info: ", err or "unknown")
+                return
+            end
 
-                table.insert(buffer, "Version: ")
-                table.insert(buffer, result.version or "unknown")
-                table.insert(buffer, "\n")
+            local buffer = {}
 
-                local features = result.enabledFeatures
-                if type(features) == "table" then
-                    table.insert(buffer, "Enabled Features:\n")
+            table.insert(buffer, "Version: ")
+            table.insert(buffer, result.version or "unknown")
+            table.insert(buffer, "\n")
 
-                    if #features <= 0 then
-                        table.insert(buffer, "    None\n")
-                    else
-                        for _, feature in ipairs(features) do
-                            table.insert(buffer, "    ")
-                            table.insert(buffer, feature)
-                            table.insert(buffer, "\n")
-                        end
+            local features = result.enabledFeatures
+            if type(features) == "table" then
+                table.insert(buffer, "Enabled Features:\n")
+
+                if #features <= 0 then
+                    table.insert(buffer, "    None\n")
+                else
+                    for _, feature in ipairs(features) do
+                        table.insert(buffer, "    ")
+                        table.insert(buffer, feature)
+                        table.insert(buffer, "\n")
                     end
                 end
+            end
 
-                print(table.concat(buffer))
-            end,
-            function(err)
-                print("failed to get version info: ", err or "unknown")
-            end)
+            print(table.concat(buffer))
+        end)
     end
 )
 
@@ -198,11 +198,11 @@ new_rpc_cmd(
 
         local resp, method_err
         if task_type == TaskStateType.Active then
-            resp, method_err = context:call_method("tellActive")
+            resp, method_err = context:tell_active()
         elseif task_type == TaskStateType.Waiting then
-            resp, method_err = context:call_method('tellWaiting', { 0, 666 })
+            resp, method_err = context:tell_waiting(0, 666)
         elseif task_type == TaskStateType.Stopped then
-            resp, method_err = context:call_method('tellStopped', { 0, 666 })
+            resp, method_err = context:tell_stopped(0, 666)
         else
             method_err = "unknown task state type: " .. task_type
         end
