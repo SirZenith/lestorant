@@ -301,6 +301,22 @@ new_rpc_cmd(
 )
 
 new_rpc_cmd(
+    "unpause",
+    "Recover specified or all tasks from paused state",
+    {
+        { name = "gid", type = "string", help = "GID of target task. When no specified, this command affects all task." },
+    },
+    function(context, args)
+        local gid = args.gid
+        if gid then
+            context:unpause(gid, simple_result_callback)
+        else
+            context:unpause_all(simple_result_callback)
+        end
+    end
+)
+
+new_rpc_cmd(
     "list",
     "Lists all tasks of certain state",
     {
