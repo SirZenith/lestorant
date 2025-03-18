@@ -2,6 +2,7 @@ local argparse = require "argparse"
 local torrent_dl = require "lestorant.rss.torrent_downalod"
 
 local json = require "lestorant.utils.json"
+local fs_util = require "lestorant.utils.fs_util"
 local log_util = require "lestorant.utils.log_util"
 local network_util = require "lestorant.utils.network_util"
 
@@ -38,19 +39,15 @@ local function add_rss_cmd(name, help, parameters, operation)
             return
         end
 
-        local file, open_err = io.open(config_name, "r")
-        if not file then
-            log:errorln("failed to open config file ", config_name, ": ", open_err or "unknown I/O error")
+        local data, read_err = fs_util.read_all(config_name)
+        if read_err then
+            log:errorln("failed to read config file: ", read_err or "Unknown error")
             return
         end
 
-        local read_flag = (_VERSION == "Lua 5.1" or _VERSION == "Lua 5.2") and "*a" or "a"
-        local data = file:read(read_flag)
-        file:close()
-
         local ok, result = pcall(json.decode, data)
         if not ok then
-            log:error("failed to parse config file: ", result)
+            log:errorln("failed to parse config file: ", result)
             return
         end
 
@@ -67,7 +64,7 @@ add_rss_cmd(
     function(config)
         local source = config.sources
         if not source or #source <= 0 then
-            print("no source found in config file")
+            log:warnln("no source found in config file")
             return
         end
 
@@ -104,7 +101,7 @@ add_rss_cmd(
     function(config)
         local subs = config.subscriptions
         if not subs or #subs <= 0 then
-            print("no subscription found in config file")
+            log:warnln("no subscription found in config file")
             return
         end
 
