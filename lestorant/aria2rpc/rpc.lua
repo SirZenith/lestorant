@@ -642,7 +642,15 @@ function RpcContext:save_session(on_result)
     self:call_method("aria2.saveSession", nil, on_result)
 end
 
--- system.multicall(methods)
+---@class aria2rpc.MethodCall
+---@field methodName string
+---@field params any[]
+
+---@param methods aria2rpc.MethodCall[]
+---@param on_result? aria2rpc.RpcCallback
+function RpcContext:multicall(methods, on_result)
+    self:call_method("system.multicall", { methods }, on_result)
+end
 
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:list_methods(on_result)
