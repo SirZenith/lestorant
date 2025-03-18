@@ -399,11 +399,22 @@ end
 -- ----------------------------------------------------------------------------
 -- Primitive Methods
 
+-- ensure_options_tbl adds a dummy key to option table, incase it gets serialized
+-- as JSON array.
+---@param options? table
+local function ensure_options_tbl(options)
+    if not options then
+        return
+    end
+    options.__is_tbl = true
+end
+
 ---@param uris string[] # A list of URIs.
 ---@param options? table<aria2rpc.UriOptions, any> # a table of download options.
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_uri(uris, options, position, on_result)
+    ensure_options_tbl(options)
     self:call_method("aria2.addUri", { uris, options, position }, on_result)
 end
 
@@ -413,6 +424,7 @@ end
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_torrent(torrent, uris, options, position, on_result)
+    ensure_options_tbl(options)
     self:call_method("aria2.addTorrent", { torrent, uris, options, position }, on_result)
 end
 
@@ -421,6 +433,7 @@ end
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_metalink(metalink, options, position, on_result)
+    ensure_options_tbl(options)
     self:call_method("aria2.addMetalink", { metalink, options, position }, on_result)
 end
 
@@ -554,7 +567,7 @@ function RpcContext:get_option(gid, on_result)
 end
 
 ---@param gid any
----@param options aria2rpc.UriOptions
+---@param options table<aria2rpc.UriOptions, any>
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:change_option(gid, options, on_result)
     self:call_method("aria2.changeOption", { gid, options }, on_result)
@@ -582,7 +595,7 @@ M.GlobalOptions = {
     server_stat_of                  = "server-stat-of",
 }
 
----@param options any
+---@param options table<aria2rpc.GlobalOptions, any>
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:change_global_option(options, on_result)
     self:call_method("aria2.changeGlobalOption", { options }, on_result)

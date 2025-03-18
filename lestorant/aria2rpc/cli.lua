@@ -7,6 +7,9 @@ local logger = require "lestorant.utils.log_util"
 
 local Command = argparse.Command
 local RpcContext = rpc.RpcContext
+local ChangePosHow = rpc.ChangePosHow
+local UriOptions = rpc.UriOptions
+local GlobalOptions = rpc.GlobalOptions
 
 local log = logger.Logger:new("aria2rpc")
 
@@ -27,11 +30,12 @@ local function tbl_extend(dst, ...)
     return dst
 end
 
+---@param key_tbl table<unknown, string>
 ---@return argparse.ParameterCfg[]
-local function make_uri_option_parameter_list()
+local function make_option_parameter_list(key_tbl)
     local parameters = {}
 
-    for _, opt_name in pairs(rpc.UriOptions) do
+    for _, opt_name in pairs(key_tbl) do
         ---@type argparse.ParameterCfg
         local param = {
             long = opt_name,
@@ -44,13 +48,15 @@ local function make_uri_option_parameter_list()
     return parameters
 end
 
--- get_uri_options_from_args takes parsed arguments table, generate RPC
+-- get_options_from_args takes parsed arguments table, generate RPC
 -- options table by reading argument values.
----@return table<aria2rpc.UriOptions, string>
-local function get_uri_options_from_args(args)
+---@param args table<string, any>
+---@param key_tbl table<unknown, string>
+---@return table<string, any>
+local function get_options_from_args(args, key_tbl)
     local options = {}
 
-    for _, opt_name in pairs(rpc.UriOptions) do
+    for _, opt_name in pairs(key_tbl) do
         local value = args[opt_name]
         if value ~= nil then
             options[opt_name] = value
@@ -115,19 +121,29 @@ local function new_rpc_cmd(name, help, params, operation)
     root_cmd:subcommand { cmd }
 end
 
+---@param _ any
+---@param err? string
+local function simple_result_callback(_, err)
+    if err then
+        io.write("operation failed: ", err, "\n")
+    else
+        print("operation successed")
+    end
+end
+
 new_rpc_cmd(
     "add-task",
     "Adds a list of items to download list. Each item in list should be either a URI or path to local file",
     tbl_extend({
         { name = "items", type = "string", required = true, max_cnt = 0 },
-    }, make_uri_option_parameter_list()),
+    }, make_option_parameter_list(UriOptions)),
     function(context, args)
         local items = args.items
         if not items then
             return
         end
 
-        local options = get_uri_options_from_args(args)
+        local options = get_options_from_args(args, UriOptions)
 
         for _, item in ipairs(items --[[@as string[] ]]) do
             context:add_task(item, options, nil, function(result, err)
@@ -142,39 +158,46 @@ new_rpc_cmd(
 )
 
 new_rpc_cmd(
-    "version",
-    "Queries version infomation of running aria2 instance",
-    nil,
-    function(context)
-        context:get_version(function(result, err)
-            if err then
-                log:errorln("failed to get version info: ", err or "unknown")
-                return
+    "remove",
+    "Remove given task from download queue",
+    {
+        { long = "force", short = "f",     type = "string", help = "Force task to be removed" },
+        { name = "gid",   type = "string", required = true, help = "GID of given task" },
+    },
+    function(context, args)
+        local gid = args.gid or ""
+
+        if args.force then
+            context:force_remove(gid, simple_result_callback)
+        else
+            context:remove(gid, simple_result_callback)
+        end
+    end
+)
+
+new_rpc_cmd(
+    "pause",
+    "Pause specified or all tasks",
+    {
+        { long = "force", short = "f",     type = "boolean",                                                              help = "force task to pause" },
+        { name = "gid",   type = "string", help = "GID of target task. When no specified, this command affects all task." },
+    },
+    function(context, args)
+        local gid = args.gid
+
+        if gid then
+            if args.force then
+                context:force_pause(gid, simple_result_callback)
+            else
+                context:pause(gid, simple_result_callback)
             end
-
-            local buffer = {}
-
-            table.insert(buffer, "Version: ")
-            table.insert(buffer, result.version or "unknown")
-            table.insert(buffer, "\n")
-
-            local features = result.enabledFeatures
-            if type(features) == "table" then
-                table.insert(buffer, "Enabled Features:\n")
-
-                if #features <= 0 then
-                    table.insert(buffer, "    None\n")
-                else
-                    for _, feature in ipairs(features) do
-                        table.insert(buffer, "    ")
-                        table.insert(buffer, feature)
-                        table.insert(buffer, "\n")
-                    end
-                end
+        else
+            if args.force then
+                context:force_pause_all()
+            else
+                context:pause_all(simple_result_callback)
             end
-
-            print(table.concat(buffer))
-        end)
+        end
     end
 )
 
@@ -249,6 +272,30 @@ local function print_tasks(result, err)
     end
 end
 
+---@param result any
+local function print_info_result(result)
+    if type(result) ~= "table" then
+        print("invalid response data")
+        return
+    end
+
+    for k, v in pairs(result) do
+        io.write(k, ": ", v, "\n")
+    end
+end
+
+---@param result any
+local function print_list_result(result)
+    if type(result) ~= "table" then
+        print("invalid response data")
+        return
+    end
+
+    for _, value in ipairs(result) do
+        print(value)
+    end
+end
+
 new_rpc_cmd(
     "list",
     "Lists all tasks of certain state",
@@ -274,6 +321,218 @@ new_rpc_cmd(
         else
             print_tasks(nil, "unknown task state type: " .. task_type)
         end
+    end
+)
+
+new_rpc_cmd(
+    "change-pos",
+    "Move task to certain position",
+    {
+        { name = "gid", type = "string", required = true, help = "GID of target task" },
+        { name = "pos", type = "number", required = true, help = "0-base index indicating where to move task to" },
+        { long = "how", short = "h",     type = "string", default = ChangePosHow.pos_set,                        help = "indicating how does `pos` index get translated, possible values are POS_SET (relative to queue start), POS_CUR (relative to current index), POS_END (relative to queue end)" }
+    },
+    function(context, args)
+        context:change_position(args.gid, args.pos, args.how, simple_result_callback)
+    end
+)
+
+new_rpc_cmd(
+    "task-option",
+    "Get download option of given task",
+    {
+        { name = "gid", type = "string", required = true, help = "GID of target task" },
+    },
+    function(context, args)
+        local gid = args.gid
+        context:get_option(gid, function(result, err)
+            if err then
+                io.write("failed to fetch info for '", gid, "': ", err, "\n")
+                return
+            end
+
+            print_info_result(result)
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "set-task-option",
+    "Change download options of given task",
+    {
+        { name = "gid", type = "string", required = true, help = "GID of target task" },
+    },
+    function(context, args)
+        local gid = args.gid
+        local options = get_options_from_args(args, UriOptions)
+        context:change_option(gid, options, simple_result_callback)
+    end
+)
+
+new_rpc_cmd(
+    "global-option",
+    "Get global options of Aria2",
+    nil,
+    function(context)
+        context:get_global_option(function(result, err)
+            if err then
+                io.write("operation failed: ", err, "\n")
+                return
+            end
+
+            print_info_result(result)
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "set-global-option",
+    "Change global options of Aria2",
+    make_option_parameter_list(GlobalOptions),
+    function(context, args)
+        local options = get_options_from_args(args, GlobalOptions)
+        context:change_global_option(options, simple_result_callback)
+    end
+)
+
+new_rpc_cmd(
+    "global-stat",
+    "Get Aria2 global status",
+    nil,
+    function(context)
+        context:get_global_stat(function(result, err)
+            if err then
+                io.write("failed to get data: ", err, "\n")
+                return
+            end
+
+            print_info_result(result)
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "remove-download-result",
+    "Remove all download result from memory",
+    {
+        { name = "gid", type = "string", help = "GID of target task. When missig, this command affects all completed/removed/error tasks." }
+    },
+    function(context, args)
+        local gid = args.gid
+        if gid then
+            context:remove_download_result(gid, simple_result_callback)
+        else
+            context:purge_download_result(simple_result_callback)
+        end
+    end
+)
+
+new_rpc_cmd(
+    "version",
+    "Queries version infomation of running aria2 instance",
+    nil,
+    function(context)
+        context:get_version(function(result, err)
+            if err then
+                log:errorln("failed to get version info: ", err or "unknown")
+                return
+            end
+
+            local buffer = {}
+
+            table.insert(buffer, "Version: ")
+            table.insert(buffer, result.version or "unknown")
+            table.insert(buffer, "\n")
+
+            local features = result.enabledFeatures
+            if type(features) == "table" then
+                table.insert(buffer, "Enabled Features:\n")
+
+                if #features <= 0 then
+                    table.insert(buffer, "    None\n")
+                else
+                    for _, feature in ipairs(features) do
+                        table.insert(buffer, "    ")
+                        table.insert(buffer, feature)
+                        table.insert(buffer, "\n")
+                    end
+                end
+            end
+
+            print(table.concat(buffer))
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "session-info",
+    "Get infomation of current session",
+    nil,
+    function(context)
+        context:get_session_info(function(result, err)
+            if err then
+                io.write("failed to get data: ", err, "\n")
+                return
+            end
+
+            print_info_result(result)
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "shutdown",
+    "Shutdown Aria2",
+    {
+        { long = "force", short = "f", type = "boolean", help = "Force shutdown" },
+    },
+    function(context, args)
+        if args.force then
+            context:force_shutdown(simple_result_callback)
+        else
+            context:shutdown(simple_result_callback)
+        end
+    end
+)
+
+new_rpc_cmd(
+    "save-session",
+    "Save session data as file",
+    nil,
+    function(context)
+        context:save_session(simple_result_callback)
+    end
+)
+
+new_rpc_cmd(
+    "list-method",
+    "List all available methods",
+    nil,
+    function(context)
+        context:list_methods(function(result, err)
+            if err then
+                io.write("failed to fetch data: ", err, "\n")
+                return
+            end
+
+            print_list_result(result)
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "list-notification",
+    "List all notifications",
+    nil,
+    function(context)
+        context:list_notification(function(result, err)
+            if err then
+                io.write("failed to fetch data: ", err, "\n")
+                return
+            end
+
+            print_list_result(result)
+        end)
     end
 )
 
