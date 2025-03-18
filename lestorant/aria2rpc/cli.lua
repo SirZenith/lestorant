@@ -79,7 +79,7 @@ local common_params = {
 
 ---@enum aria2rpc.TaskStateType
 local TaskStateType = {
-    Active = 'Active',
+    Active = 'active',
     Waiting = 'waiting',
     Stopped = 'stopped',
 }
@@ -296,6 +296,9 @@ local function print_list_result(result)
     end
 end
 
+-- ----------------------------------------------------------------------------
+-- Command Definition
+
 new_rpc_cmd(
     "list",
     "Lists all tasks of certain state",
@@ -359,9 +362,9 @@ new_rpc_cmd(
 new_rpc_cmd(
     "set-task-option",
     "Change download options of given task",
-    {
+    tbl_extend({
         { name = "gid", type = "string", required = true, help = "GID of target task" },
-    },
+    }, make_option_parameter_list(UriOptions)),
     function(context, args)
         local gid = args.gid
         local options = get_options_from_args(args, UriOptions)

@@ -130,6 +130,23 @@ M.UriOptions = {
     user_agent = "user-agent"
 }
 
+---@enum aria2rpc.GlobalOptions
+M.GlobalOptions = {
+    bt_max_open_files               = "bt-max-open-files",
+    download_result                 = "download-result",
+    keep_unfinished_download_result = "keep-unfinished-download-result",
+    log                             = "log",
+    log_level                       = "log-level",
+    max_concurrent_downloads        = "max-concurrent-downloads",
+    max_download_result             = "max-download-result",
+    max_overall_download_linmit     = "max-overall-download-limit",
+    max_overall_upload_limit        = "max-overall-upload-limit",
+    optimize_concurrent_downloads   = "optimize-concurrent-downloads",
+    save_cookies                    = "save-cookies",
+    save_session                    = "save-session",
+    server_stat_of                  = "server-stat-of",
+}
+
 ---@enum aria2rpc.TaskInfoKey
 M.StatusKey = {
     gid = "gid",
@@ -174,9 +191,15 @@ M.TorrentFileMode = {
     multi = "multi",
 }
 
+---@enum aria2rpc.ChangePosHow
+M.ChangePosHow = {
+    pos_set = "POS_SET",
+    pos_cur = "POS_CUR",
+    pos_end = "POS_END",
+}
+
 ---@class aria2rpc.TorrentInfoDict
 ---@field name? string
-
 
 ---@class aria2rpc.TaskTorrentInfo
 ---@field announceList string[][] # List of lists of announce URIs. If the torrent contains announce and no announce-list, announce is converted to the announce-list format.
@@ -222,6 +245,10 @@ M.TorrentFileMode = {
 ---@field bittorrent? aria2rpc.TaskTorrentInfo
 ---@field verifiedLength integer # The number of verified number of bytes while the files are being hash checked. This key exists only when this download is being hash checked.
 ---@field verifyIntegrityPending boolean # true if this download is waiting for the hash check in a queue. This key exists only when this download is in the queue.
+
+---@class aria2rpc.MethodCall
+---@field methodName string
+---@field params any[]
 
 M.ErrorCodeTbl = {
     [1] = "unknown",
@@ -535,13 +562,6 @@ function RpcContext:tell_stopped(offset, num, keys, on_result)
     self:call_method("aria2.tellStopped", { offset, num, keys }, on_result)
 end
 
----@enum aria2rpc.ChangePosHow
-M.ChangePosHow = {
-    pos_set = "POS_SET",
-    pos_cur = "POS_CUR",
-    pos_end = "POS_END",
-}
-
 ---@param gid string
 ---@param pos integer
 ---@param how aria2rpc.ChangePosHow
@@ -577,23 +597,6 @@ end
 function RpcContext:get_global_option(on_result)
     self:call_method("aria2.getGlobalOption", nil, on_result)
 end
-
----@enum aria2rpc.GlobalOptions
-M.GlobalOptions = {
-    bt_max_open_files               = "bt-max-open-files",
-    download_result                 = "download-result",
-    keep_unfinished_download_result = "keep-unfinished-download-result",
-    log                             = "log",
-    log_level                       = "log-level",
-    max_concurrent_downloads        = "max-concurrent-downloads",
-    max_download_result             = "max-download-result",
-    max_overall_download_linmit     = "max-overall-download-limit",
-    max_overall_upload_limit        = "max-overall-upload-limit",
-    optimize_concurrent_downloads   = "optimize-concurrent-downloads",
-    save_cookies                    = "save-cookies",
-    save_session                    = "save-session",
-    server_stat_of                  = "server-stat-of",
-}
 
 ---@param options table<aria2rpc.GlobalOptions, any>
 ---@param on_result? aria2rpc.RpcCallback
@@ -641,10 +644,6 @@ end
 function RpcContext:save_session(on_result)
     self:call_method("aria2.saveSession", nil, on_result)
 end
-
----@class aria2rpc.MethodCall
----@field methodName string
----@field params any[]
 
 ---@param methods aria2rpc.MethodCall[]
 ---@param on_result? aria2rpc.RpcCallback
