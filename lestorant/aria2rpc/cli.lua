@@ -13,6 +13,61 @@ local GlobalOptions = rpc.GlobalOptions
 
 local log = logger.Logger:new("aria2rpc")
 
+---@type argparse.ParameterCfg[]
+local COMMON_PARAMS = {
+    { long = "rpc-url", type = "string" },
+    { long = "secret",  type = "string" },
+    -- TODO: add support for legacy authentication method
+    -- { long = "username", short = "u", type = "string" },
+    -- { long = "password", short = "p", type = "string" },
+    { long = "proxy",   type = "string" },
+    { long = "method",  type = "string" },
+}
+
+---@enum aria2rpc.TaskStateType
+local TaskStateType = {
+    Active = 'active',
+    Waiting = 'waiting',
+    Stopped = 'stopped',
+}
+
+local root_cmd = Command:new { name = "aria2rpc", help = "Aria2 RPC client" }
+
+-- new_rpc_cmd creates a new RPC command and adds it to `commands` list.
+---@param name string # command name
+---@param help string # help mesage of this command.
+---@param params? argparse.ParameterCfg[] # command's parameter list
+---@param operation fun(context: aria2rpc.RpcContext, args: table<string, any>)
+local function new_rpc_cmd(name, help, params, operation)
+    local cmd = Command:new { name = name, help = help }
+    cmd:parameter(COMMON_PARAMS)
+
+    if params then
+        cmd:parameter(params)
+    end
+
+    cmd:operation(function(args)
+        local context = RpcContext:new_from_env()
+
+        if args.rpc_url then
+            context.rpc_url = args.rpc_url
+        end
+        if args.secret then
+            context.secret = args.secret
+        end
+        if args.proxy then
+            context.proxy = args.proxy
+        end
+        if args.method then
+            context.method = args.method
+        end
+
+        operation(context, args)
+    end)
+
+    root_cmd:subcommand { cmd }
+end
+
 -- tbl_extend takes a destination table `dst` and several other tables. Modifies
 -- `dst` in place, appending elements of all other tables to it.
 -- Return value of this function will be `dst`.
@@ -66,70 +121,114 @@ local function get_options_from_args(args, key_tbl)
     return options
 end
 
----@type argparse.ParameterCfg[]
-local common_params = {
-    { long = "rpc-url", type = "string" },
-    { long = "secret",  type = "string" },
-    -- TODO: add support for legacy authentication method
-    -- { long = "username", short = "u", type = "string" },
-    -- { long = "password", short = "p", type = "string" },
-    { long = "proxy",   type = "string" },
-    { long = "method",  type = "string" },
-}
-
----@enum aria2rpc.TaskStateType
-local TaskStateType = {
-    Active = 'active',
-    Waiting = 'waiting',
-    Stopped = 'stopped',
-}
-
-local root_cmd = Command:new { name = "aria2rpc", help = "Aria2 RPC client" }
-
--- new_rpc_cmd creates a new RPC command and adds it to `commands` list.
----@param name string # command name
----@param help string # help mesage of this command.
----@param params? argparse.ParameterCfg[] # command's parameter list
----@param operation fun(context: aria2rpc.RpcContext, args: table<string, any>)
-local function new_rpc_cmd(name, help, params, operation)
-    local cmd = Command:new { name = name, help = help }
-    cmd:parameter(common_params)
-
-    if params then
-        cmd:parameter(params)
-    end
-
-    cmd:operation(function(args)
-        local context = RpcContext:new_from_env()
-
-        if args.rpc_url then
-            context.rpc_url = args.rpc_url
-        end
-        if args.secret then
-            context.secret = args.secret
-        end
-        if args.proxy then
-            context.proxy = args.proxy
-        end
-        if args.method then
-            context.method = args.method
-        end
-
-        operation(context, args)
-    end)
-
-    root_cmd:subcommand { cmd }
-end
-
+-- simple_result_callback prints basic prompt upon request response.
 ---@param _ any
 ---@param err? string
 local function simple_result_callback(_, err)
     if err then
-        io.write("operation failed: ", err, "\n")
+        io.stderr:write("operation failed: ", err, "\n")
     else
         print("operation successed")
     end
 end
+
+---@param result? any
+---@param err? string
+local function print_tasks(result, err)
+    if err then
+        io.stderr:write(err, "\n")
+        return
+    end
+
+    if type(result) ~= "table" then
+        io.stderr:write("can't find valid task list in responded data", "\n")
+        return
+    end
+
+    for _, task in ipairs(result --[[@as aria2rpc.TaskInfo[] ]]) do
+        local completed_length = tonumber(task.completedLength) or 0
+        local total_length = tonumber(task.totalLength) or 0
+        local remaining_length = total_length - completed_length
+        local download_speed = tonumber(task.downloadSpeed) or 0
+
+        local eta = format_util.compute_eta(download_speed, remaining_length)
+
+        local percent = 100
+        if (total_length > 0) then
+            percent = 100 * completed_length / total_length
+        end
+
+        local name
+
+        local bittorrent = task.bittorrent
+        local info_dict = bittorrent and bittorrent.info
+        local info_name = info_dict and info_dict.name
+        if info_name then
+            name = info_name
+        end
+
+        if not name then
+            local files_list = task.files
+            if type(files_list) == "table" then
+                for _, file in ipairs(files_list --[[@as aria2rpc.TaskFileInfo[] ]]) do
+                    local uri_list = file.uris
+                    if type(uri_list) == "table" and #uri_list > 0 then
+                        name = uri_list[1].uri
+                    else
+                        name = file.path
+                    end
+                end
+            end
+        end
+
+        if name then
+            name = format_util.truncate_string(name, 50)
+        end
+
+        local file_size_threshold = 0.8
+        local msg = ('%s %s %.1f%% (%s / %s) %s/s %s/s (%s/%s) %s'):format(
+            task.gid or "-",
+            name or "Unknown",
+            percent,
+            format_util.file_size_abbr(completed_length, file_size_threshold),
+            format_util.file_size_abbr(total_length, file_size_threshold),
+            format_util.file_size_abbr(download_speed, file_size_threshold),
+            format_util.file_size_abbr(tonumber(task.uploadSpeed) or 0, file_size_threshold),
+            task.numSeeders,
+            task.connections,
+            eta
+        )
+
+        print(msg)
+    end
+end
+
+---@param result any
+local function print_info_result(result)
+    if type(result) ~= "table" then
+        io.stderr:write("invalid response data", "\n")
+        return
+    end
+
+    for k, v in pairs(result) do
+        io.write(k, ": ", v, "\n")
+    end
+end
+
+---@param result any
+local function print_list_result(result)
+    if type(result) ~= "table" then
+        io.stderr:write("invalid response data", "\n")
+        return
+    end
+
+    for _, value in ipairs(result) do
+        print(value)
+    end
+end
+
+-- ----------------------------------------------------------------------------
+-- Command Definition
 
 new_rpc_cmd(
     "add-task",
@@ -200,104 +299,6 @@ new_rpc_cmd(
         end
     end
 )
-
----@param result? any
----@param err? string
-local function print_tasks(result, err)
-    if err then
-        print(err)
-        return
-    end
-
-    if type(result) ~= "table" then
-        print("can't find valid task list in responded data")
-        return
-    end
-
-    for _, task in ipairs(result --[[@as aria2rpc.TaskInfo[] ]]) do
-        local completed_length = tonumber(task.completedLength) or 0
-        local total_length = tonumber(task.totalLength) or 0
-        local remaining_length = total_length - completed_length
-        local download_speed = tonumber(task.downloadSpeed) or 0
-
-        local eta = format_util.compute_eta(download_speed, remaining_length)
-
-        local percent = 100
-        if (total_length > 0) then
-            percent = 100 * completed_length / total_length
-        end
-
-        local name
-
-        local bittorrent = task.bittorrent
-        local info_dict = bittorrent and bittorrent.info
-        local info_name = info_dict and info_dict.name
-        if info_name then
-            name = info_name
-        end
-
-        if not name then
-            local files_list = task.files
-            if type(files_list) == "table" then
-                for _, file in ipairs(files_list --[[@as aria2rpc.TaskFileInfo[] ]]) do
-                    local uri_list = file.uris
-                    if type(uri_list) == "table" and #uri_list > 0 then
-                        name = uri_list[1].uri
-                    else
-                        name = file.path
-                    end
-                end
-            end
-        end
-
-        if name then
-            name = format_util.truncate_string(name, 50)
-        end
-
-        local file_size_threshold = 0.8
-        local msg = ('%s %s %.1f%% (%s / %s) %s/s %s/s (%s/%s) %s'):format(
-            task.gid or "-",
-            name or "Unknown",
-            percent,
-            format_util.file_size_abbr(completed_length, file_size_threshold),
-            format_util.file_size_abbr(total_length, file_size_threshold),
-            format_util.file_size_abbr(download_speed, file_size_threshold),
-            format_util.file_size_abbr(tonumber(task.uploadSpeed) or 0, file_size_threshold),
-            task.numSeeders,
-            task.connections,
-            eta
-        )
-
-        print(msg)
-    end
-end
-
----@param result any
-local function print_info_result(result)
-    if type(result) ~= "table" then
-        print("invalid response data")
-        return
-    end
-
-    for k, v in pairs(result) do
-        io.write(k, ": ", v, "\n")
-    end
-end
-
----@param result any
-local function print_list_result(result)
-    if type(result) ~= "table" then
-        print("invalid response data")
-        return
-    end
-
-    for _, value in ipairs(result) do
-        print(value)
-    end
-end
-
--- ----------------------------------------------------------------------------
--- Command Definition
 
 new_rpc_cmd(
     "list",
@@ -441,28 +442,22 @@ new_rpc_cmd(
                 return
             end
 
-            local buffer = {}
+            local out = io.stdout
 
-            table.insert(buffer, "Version: ")
-            table.insert(buffer, result.version or "unknown")
-            table.insert(buffer, "\n")
+            out:write("Version: ", result.version or "unknown", "\n")
 
             local features = result.enabledFeatures
             if type(features) == "table" then
-                table.insert(buffer, "Enabled Features:\n")
+                out:write("Enabled Features:\n")
 
                 if #features <= 0 then
-                    table.insert(buffer, "    None\n")
+                    out:write("    None\n")
                 else
                     for _, feature in ipairs(features) do
-                        table.insert(buffer, "    ")
-                        table.insert(buffer, feature)
-                        table.insert(buffer, "\n")
+                        out:write("    ", feature, "\n")
                     end
                 end
             end
-
-            print(table.concat(buffer))
         end)
     end
 )
