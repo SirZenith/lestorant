@@ -3,7 +3,7 @@ local ltn12 = require "ltn12"
 local url = require "socket.url"
 local fs_util = require "lestorant.utils.fs_util"
 
-local json = require "lestorant.utils.json"
+local lunajson = require "lunajson"
 local log_util = require "lestorant.utils.log_util"
 local network_util = require "lestorant.utils.network_util"
 
@@ -348,7 +348,7 @@ local function call_method_inner(context, id, method, params, on_result)
         end
     end
 
-    local json_body = json.encode {
+    local json_body = lunajson.encode {
         jsonrpc = "2.0",
         id = id,
         method = method,
@@ -389,7 +389,7 @@ local function call_method_inner(context, id, method, params, on_result)
     end
 
     local resp_data = table.concat(resp_tbl)
-    local parse_ok, data = pcall(json.decode, resp_data)
+    local parse_ok, data = pcall(lunajson.decode, resp_data)
     if not parse_ok then
         on_result(context, id, nil, "invalid JSON response: " .. (data or "unknown error"))
         return
@@ -426,14 +426,20 @@ end
 -- ----------------------------------------------------------------------------
 -- Primitive Methods
 
--- ensure_options_tbl adds a dummy key to option table, incase it gets serialized
--- as JSON array.
----@param options? table
-local function ensure_options_tbl(options)
-    if not options then
-        return
+---@generic T
+---@param list T
+---@return T
+local function normalize_empty_list(list)
+    if type(list) ~= "table" then
+        return list
     end
-    options.__is_tbl = true
+
+    if #list <= 0 then
+        list = {}
+        list[0] = 0
+    end
+
+    return list
 end
 
 ---@param uris string[] # A list of URIs.
@@ -441,7 +447,7 @@ end
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_uri(uris, options, position, on_result)
-    ensure_options_tbl(options)
+    uris = normalize_empty_list(uris)
     self:call_method("aria2.addUri", { uris, options, position }, on_result)
 end
 
@@ -451,7 +457,7 @@ end
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_torrent(torrent, uris, options, position, on_result)
-    ensure_options_tbl(options)
+    uris = normalize_empty_list(uris)
     self:call_method("aria2.addTorrent", { torrent, uris, options, position }, on_result)
 end
 
@@ -460,7 +466,6 @@ end
 ---@param position? integer # 0-base integer, new task will be inserted ot task queue at this index.
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:add_metalink(metalink, options, position, on_result)
-    ensure_options_tbl(options)
     self:call_method("aria2.addMetalink", { metalink, options, position }, on_result)
 end
 
@@ -513,6 +518,7 @@ end
 ---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_status(gid, keys, on_result)
+    keys = normalize_empty_list(keys)
     self:call_method("aria2.tellStatus", { gid, keys }, on_result)
 end
 
@@ -543,6 +549,7 @@ end
 ---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_active(keys, on_result)
+    keys = normalize_empty_list(keys)
     self:call_method("aria2.tellActive", { keys }, on_result)
 end
 
@@ -551,6 +558,7 @@ end
 ---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_waiting(offset, num, keys, on_result)
+    keys = normalize_empty_list(keys)
     self:call_method("aria2.tellWaiting", { offset, num, keys }, on_result)
 end
 
@@ -559,6 +567,7 @@ end
 ---@param keys? aria2rpc.TaskInfoKey[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:tell_stopped(offset, num, keys, on_result)
+    keys = normalize_empty_list(keys)
     self:call_method("aria2.tellStopped", { offset, num, keys }, on_result)
 end
 
@@ -573,11 +582,13 @@ end
 ---@param gid any
 ---@param fileIndex integer
 ---@param del_uris string[]
----@param addUris string[]
+---@param add_uris string[]
 ---@param position? integer
 ---@param on_result? aria2rpc.RpcCallback
-function RpcContext:change_uri(gid, fileIndex, del_uris, addUris, position, on_result)
-    self:call_method("aria2.changeUri", { gid, fileIndex, del_uris, addUris, position }, on_result)
+function RpcContext:change_uri(gid, fileIndex, del_uris, add_uris, position, on_result)
+    del_uris = normalize_empty_list(del_uris)
+    add_uris = normalize_empty_list(add_uris)
+    self:call_method("aria2.changeUri", { gid, fileIndex, del_uris, add_uris, position }, on_result)
 end
 
 ---@param gid string
@@ -648,6 +659,7 @@ end
 ---@param methods aria2rpc.MethodCall[]
 ---@param on_result? aria2rpc.RpcCallback
 function RpcContext:multicall(methods, on_result)
+    methods = normalize_empty_list(methods)
     self:call_method("system.multicall", { methods }, on_result)
 end
 

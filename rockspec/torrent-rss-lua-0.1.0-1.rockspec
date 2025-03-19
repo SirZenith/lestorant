@@ -15,7 +15,8 @@ dependencies = {
     "xml2lua >= 1.6",
     "lua-argparse >= 0.2.0",
     "luasec >= 1.3",
-    "luasocket >= 3.0"
+    "luasocket >= 3.0",
+    "lunajson >= 1.2.3",
 }
 build = {
     type = "builtin",

@@ -2,7 +2,6 @@ local argparse = require "argparse"
 
 local rpc = require "lestorant.aria2rpc.rpc"
 local format_util = require "lestorant.utils.format_util"
-local json = require "lestorant.utils.json"
 local logger = require "lestorant.utils.log_util"
 
 local Command = argparse.Command

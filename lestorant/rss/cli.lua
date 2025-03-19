@@ -1,7 +1,7 @@
 local argparse = require "argparse"
 local torrent_dl = require "lestorant.rss.torrent_downalod"
 
-local json = require "lestorant.utils.json"
+local lunajson = require "lunajson"
 local fs_util = require "lestorant.utils.fs_util"
 local log_util = require "lestorant.utils.log_util"
 local network_util = require "lestorant.utils.network_util"
@@ -45,13 +45,13 @@ local function add_rss_cmd(name, help, parameters, operation)
             return
         end
 
-        local ok, result = pcall(json.decode, data)
+        local ok, result = pcall(lunajson.decode, data)
         if not ok then
             log:errorln("failed to parse config file: ", result)
             return
         end
 
-        operation(result, args)
+        operation(result --[[@as lestorant.Config]], args)
     end)
 
     root_cmd:subcommand { cmd }
