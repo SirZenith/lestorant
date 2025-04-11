@@ -3,6 +3,7 @@ local argparse = require "argparse"
 local rpc = require "lestorant.aria2rpc.rpc"
 local format_util = require "lestorant.utils.format_util"
 local logger = require "lestorant.utils.log_util"
+local lunajson = require "lunajson"
 
 local Command = argparse.Command
 local RpcContext = rpc.RpcContext
@@ -110,8 +111,8 @@ end
 local function get_options_from_args(args, key_tbl)
     local options = {}
 
-    for _, opt_name in pairs(key_tbl) do
-        local value = args[opt_name]
+    for arg_name, opt_name in pairs(key_tbl) do
+        local value = args[arg_name]
         if value ~= nil then
             options[opt_name] = value
         end
@@ -340,6 +341,69 @@ new_rpc_cmd(
         else
             print_tasks(nil, "unknown task state type: " .. task_type)
         end
+    end
+)
+
+new_rpc_cmd(
+    "get-uris",
+    "List all URIs in given gid",
+    {
+        {
+            name = "gid",
+            type = "string",
+            required = true,
+            help = "target GID",
+        }
+    },
+    function(context, args)
+        local gid = args.gid
+        context:get_uris(gid, function(result, err)
+            if err then
+                io.write("failed to fetch URI list for '", gid, "': ", err, "\n")
+                return
+            end
+
+            for _, info in ipairs(result) do
+                -- index
+                -- length
+                -- selected
+                -- path
+                -- completedLength
+                io.write(tostring(info.index), ". ", info.path, "\n")
+            end
+        end)
+    end
+)
+
+new_rpc_cmd(
+    "get-files",
+    "List all files in given gid",
+    {
+        {
+            name = "gid",
+            type = "string",
+            required = true,
+            help = "target GID",
+        }
+    },
+    function(context, args)
+        local gid = args.gid
+        context:get_files(gid, function(result, err)
+            if err then
+                io.write("failed to fetch file list for '", gid, "': ", err, "\n")
+                return
+            end
+
+            for _, info in ipairs(result) do
+                -- index
+                -- length
+                -- selected
+                -- path
+                -- uris
+                -- completedLength
+                io.write(tostring(info.index), ". ", info.path, "\n")
+            end
+        end)
     end
 )
 
