@@ -453,6 +453,20 @@ new_rpc_cmd(
 )
 
 new_rpc_cmd(
+    "select-files",
+    "Change file selection for torrent download",
+    {
+        { name = "gid",       type = "string", required = true, help = "GID of target task" },
+        { name = "file_list", type = "string", require = true,  help = "A list of file separated by `,`, each element in file list can either be a integer file index or a file range represented by concatenating two file indexes by `-`." },
+    },
+    function(context, args)
+        local gid = args.gid
+        local options = { ["select-file"] = args.file_list }
+        context:change_option(gid, options, simple_result_callback)
+    end
+)
+
+new_rpc_cmd(
     "global-option",
     "Get global options of Aria2",
     nil,
